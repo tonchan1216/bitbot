@@ -4,7 +4,7 @@ const slack_baseuri = "https://slack.com/api/chat.postMessage"
 const COINCHECK_ACCESS_KEY = prop.COINCHECK_ACCESS_KEY
 const COINCHECK_SECRET_KEY = prop.COINCHECK_SECRET_KEY
 const SLACK_ACCESS_TOKEN = prop.SLACK_ACCESS_TOKEN
-const CHANNEL_ID = prop.CHANNEL_ID
+const CHANNEL_NAME = prop.CHANNEL_NAME
 
 type Contents = Array<{
   type: string
@@ -36,10 +36,12 @@ type Text = {
 function postMessage(contents: Contents, thread_ts = '') {
   // 投稿するチャンネルやメッセージ内容を入れる
   const payload = {
-    token: prop.ACCESS_TOKEN,
-    channel: prop.CHANNEL_ID,
+    token: SLACK_ACCESS_TOKEN,
+    channel: CHANNEL_NAME,
     thread_ts: thread_ts,
     text: '',
+    username: 'BitBot',
+    icon_emoji: ":robot_face:",
     blocks: JSON.stringify(contents),
   }
 
@@ -115,12 +117,62 @@ function hmac(url: string, data?: any) : GoogleAppsScript.URL_Fetch.HttpHeaders 
 }
 
 // エラー処理
-function throwError(msg:string) {
-  console.log(msg)
+function errorHandle(header: string, msg:string) {
+  const contents: Contents = [
+    {
+      type: 'header',
+      text: {
+        type: 'plain_text',
+        text: ':warning: ' + header,
+      },
+    },
+    {
+      type: 'section',
+      text: {
+        type: 'plain_text',
+        text: msg,
+      },
+    },
+  ]
+
+  const response = postMessage(contents)
+
+  if (!response['ok']) {
+    console.log(msg)
+    console.log(response)
+  }
+}
+
+// 取引実行のお知らせ
+function notification(msg : string) {
+  const contents: Contents = [
+    {
+      type: 'header',
+      text: {
+        type: 'plain_text',
+        text: ':information_source: 取引を実行しました',
+        emoji: true,
+      },
+    },
+    {
+      type: 'section',
+      text: {
+        type: 'plain_text',
+        text: msg,
+        emoji: true,
+      },
+    },
+  ]
+
+  const response = postMessage(contents)
+
+  if (!response['ok']) {
+    console.log(response)
+  }
 }
 
 // 取引ログ
-function logging(rate: number, evaluate: number, action: string, volume: number) {
+function sheetLogger(rate: number, evaluate: number, action: string, volume: number) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('trade_log')
   const row: number = (sheet?.getLastRow() ?? 1) + 1
   const now: Date = new Date()
@@ -135,7 +187,7 @@ function logging(rate: number, evaluate: number, action: string, volume: number)
 }
 
 // 目標額の設定
-function getTarget(evaluate: number): number {
+function getTarget(): number {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('master')
   const start: string = sheet?.getRange(1, 2).getValue()
   const volume: string = sheet?.getRange(2, 2).getValue()
@@ -150,7 +202,7 @@ function getTarget(evaluate: number): number {
 function main() {
   const account = getAccount()
   if (account["success"] != true) {
-    throwError(account["error"])
+    errorHandle("missed getAccount", account["error"])
     return
   }
 
@@ -159,29 +211,43 @@ function main() {
 
   const evaluate = account["jpy"] + account["jpy_reserved"] + rate * (account["btc"] + account["btc_reserved"])
 
-  const targetVolume = getTarget(evaluate)
+  const targetVolume = getTarget()
 
   if (targetVolume == 0) {
-    throwError("積み立て開始日前")
+    errorHandle("missed targetVolume", "積み立て目標金額が設定できませんでした")
     return
   }
 
   let trade_type = "SKIP" // default
   let tradeVolume = 0
   if (evaluate > targetVolume * 1.12) {
-    trade_type = "SELL"
     tradeVolume = evaluate - targetVolume
-    postOrder(rate, tradeVolume, "sell")
+    const res = postOrder(rate, tradeVolume, "sell")
+
+    if (res["success"] != true) {
+      trade_type = "FAIL"
+      errorHandle("missed sell BTC", res["error"])
+    } else {
+      trade_type = "SELL"
+      notification("SELL")
+    }
   } else if(evaluate < targetVolume) {
     if (account["jpy"] <= targetVolume-evaluate) {
       trade_type = "SHORT"
-      throwError("残高が不足しています")
+      errorHandle("missed buy BTC", "残高が不足しています")
     } else {
-      trade_type = "BUY"
       tradeVolume = targetVolume - evaluate
-      postOrder(rate, tradeVolume, "buy")
+      const res = postOrder(rate, tradeVolume, "buy")
+
+      if (res["success"] != true) {
+        trade_type = "FAIL"
+        errorHandle("missed buy BTC", res["error"])
+      } else {
+        trade_type = "BUY"
+        notification("BUY")
+      }
     }
   }
 
-  logging(evaluate, rate, trade_type, tradeVolume)
+  sheetLogger(evaluate, rate, trade_type, tradeVolume)
 }
