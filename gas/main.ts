@@ -1,8 +1,8 @@
 const prop = PropertiesService.getScriptProperties().getProperties()
-const coincheck_baseuri = 'https://coincheck.com/api'
-const slack_baseuri = 'https://slack.com/api/chat.postMessage'
+const COINCHECK_BASEURI = 'https://coincheck.com/api'
 const COINCHECK_ACCESS_KEY = prop.COINCHECK_ACCESS_KEY
 const COINCHECK_SECRET_KEY = prop.COINCHECK_SECRET_KEY
+const SLACK_BASEURI = 'https://slack.com/api/chat.postMessage'
 const SLACK_ACCESS_TOKEN = prop.SLACK_ACCESS_TOKEN
 const CHANNEL_NAME = prop.CHANNEL_NAME
 
@@ -48,17 +48,19 @@ function postMessage(contents: Contents, thread_ts = '') {
   const params: GoogleAppsScript.URL_Fetch.URLFetchRequestOptions = {
     method: 'post',
     payload: payload,
+    muteHttpExceptions : true,
   }
 
-  const response = UrlFetchApp.fetch(slack_baseuri, params)
+  const response = UrlFetchApp.fetch(SLACK_BASEURI, params)
   return JSON.parse(response.getContentText('UTF-8'))
 }
 
 // CoincheckからTickerを取得
 function getTicker() {
-  const url = coincheck_baseuri + '/ticker'
+  const url = COINCHECK_BASEURI + '/ticker'
   const params: GoogleAppsScript.URL_Fetch.URLFetchRequestOptions = {
     method: 'get',
+    muteHttpExceptions : true,
   }
 
   const response = UrlFetchApp.fetch(url, params)
@@ -67,10 +69,11 @@ function getTicker() {
 
 // CoincheckからAccount情報を取得
 function getAccount() {
-  const url = coincheck_baseuri + '/accounts/balance'
+  const url = COINCHECK_BASEURI + '/accounts/balance'
   const params: GoogleAppsScript.URL_Fetch.URLFetchRequestOptions = {
     method: 'get',
     headers: hmac(url),
+    muteHttpExceptions : true,
   }
 
   const response = UrlFetchApp.fetch(url, params)
@@ -79,7 +82,7 @@ function getAccount() {
 
 // 取引実行
 function postOrder(rate: number, ammount: number, orderType = 'buy', pair = 'btc_jpy') {
-  const url = coincheck_baseuri + '/exchange/orders'
+  const url = COINCHECK_BASEURI + '/exchange/orders'
   const body = {
     pair: pair,
     order_type: orderType,
@@ -92,6 +95,7 @@ function postOrder(rate: number, ammount: number, orderType = 'buy', pair = 'btc
     method: 'post',
     payload: body,
     headers: hmac(url, body),
+    muteHttpExceptions : true,
   }
 
   const response = UrlFetchApp.fetch(url, params)
@@ -201,7 +205,7 @@ function getTarget(): number {
 
 function main() {
   const account = getAccount()
-  if (account['success'] != true) {
+  if (!account['success']) {
     errorHandle('missed getAccount', account['error'])
     return
   }
@@ -224,7 +228,7 @@ function main() {
     tradeVolume = (evaluate - targetVolume) / rate // BTC
     const res = postOrder(rate, tradeVolume, 'sell')
 
-    if (res['success'] != true) {
+    if (!res['success']) {
       action = 'FAIL'
       errorHandle('missed sell BTC', res['error'])
     } else {
@@ -239,7 +243,7 @@ function main() {
       tradeVolume = targetVolume - evaluate // JPY
       const res = postOrder(rate, tradeVolume, 'market_buy_amount')
 
-      if (res['success'] != true) {
+      if (!res['success']) {
         action = 'FAIL'
         errorHandle('missed buy BTC', res['error'])
       } else {
