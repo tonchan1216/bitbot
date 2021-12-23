@@ -48,7 +48,7 @@ function postMessage(contents: Contents, thread_ts = '') {
   const params: GoogleAppsScript.URL_Fetch.URLFetchRequestOptions = {
     method: 'post',
     payload: payload,
-    muteHttpExceptions : true,
+    muteHttpExceptions: true,
   }
 
   const response = UrlFetchApp.fetch(SLACK_BASEURI, params)
@@ -56,11 +56,31 @@ function postMessage(contents: Contents, thread_ts = '') {
 }
 
 // CoincheckからTickerを取得
-function getTicker() {
-  const url = COINCHECK_BASEURI + '/ticker'
+function getTicker(pair = 'btc_jpy') {
+  const query = {
+    pair: pair,
+  }
+  const url = COINCHECK_BASEURI + '/ticker?' + buildParameter(query)
   const params: GoogleAppsScript.URL_Fetch.URLFetchRequestOptions = {
     method: 'get',
-    muteHttpExceptions : true,
+    muteHttpExceptions: true,
+  }
+
+  const response = UrlFetchApp.fetch(url, params)
+  return JSON.parse(response.getContentText('UTF-8'))
+}
+
+// Coincheckからレートを取得
+function getRate(order_type = 'sell', pair = 'btc_jpy', amount = 1) {
+  const query = {
+    order_type: order_type,
+    pair: pair,
+    amount: amount,
+  }
+  const url = COINCHECK_BASEURI + '/exchange/orders/rate?' + buildParameter(query)
+  const params: GoogleAppsScript.URL_Fetch.URLFetchRequestOptions = {
+    method: 'get',
+    muteHttpExceptions: true,
   }
 
   const response = UrlFetchApp.fetch(url, params)
@@ -73,7 +93,7 @@ function getAccount() {
   const params: GoogleAppsScript.URL_Fetch.URLFetchRequestOptions = {
     method: 'get',
     headers: hmac(url),
-    muteHttpExceptions : true,
+    muteHttpExceptions: true,
   }
 
   const response = UrlFetchApp.fetch(url, params)
@@ -95,13 +115,11 @@ function postOrder(rate: number, ammount: number, orderType = 'buy', pair = 'btc
     method: 'post',
     payload: JSON.stringify(body),
     headers: hmac(url, JSON.stringify(body)),
-    contentType: "application/json",
-    muteHttpExceptions : true,
+    contentType: 'application/json',
+    muteHttpExceptions: true,
   }
 
   const response = UrlFetchApp.fetch(url, params)
-  console.log(params)
-  console.log(JSON.parse(response.getContentText('UTF-8')))
   return JSON.parse(response.getContentText('UTF-8'))
 }
 
@@ -122,9 +140,15 @@ function hmac(url: string, payload?: string): GoogleAppsScript.URL_Fetch.HttpHea
   }
 }
 
+function buildParameter(params: { [key: string]: string | number }): string {
+  return Object.keys(params)
+    .map((k) => encodeURIComponent(k) + '=' + encodeURIComponent(params[k]))
+    .join('&')
+}
+
 // Slack通知
 function notification(type: string, header: string, msg: string) {
-  const icon = (type == 'WARN') ? 'warning' : 'information_source'
+  const icon = type == 'WARN' ? 'warning' : 'information_source'
   const contents: Contents = [
     {
       type: 'header',
@@ -147,8 +171,8 @@ function notification(type: string, header: string, msg: string) {
   const response = postMessage(contents)
 
   if (!response['ok']) {
-    console.log(contents)
-    console.log(response)
+    console.error(response)
+    throw new Error('slack post exception')
   }
 }
 
@@ -180,41 +204,50 @@ function getTarget(): number {
   return diff > 0 ? diff * Number(volume) : 0
 }
 
+function getCurrency(): { currency: string; pair: string } {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('master')
+  const currency: string = sheet?.getRange(3, 2).getValue() || 'btc'
+
+  return { currency, pair: `${currency}_jpy` }
+}
+
 function main() {
+  const { currency, pair } = getCurrency()
+
   const account = getAccount()
   if (!account['success']) {
     notification('WARN', `missed getAccount`, `account['error']`)
-    return
+    throw new Error('account info exception')
   }
 
-  const ticker = getTicker()
-  const rate = Number(ticker['last'])
+  const rate = Number(getRate('sell', pair)['rate'])
 
-  const evaluate = account['jpy'] + account['jpy_reserved'] + rate * (account['btc'] + account['btc_reserved'])
+  const evaluate =
+    account['jpy'] + account['jpy_reserved'] + rate * (account[currency] + account[`${currency}_reserved`])
 
   const targetVolume = getTarget()
 
   if (targetVolume == 0) {
     notification('WARN', `missed targetVolume`, `積み立て目標金額が設定できませんでした`)
-    return
+    throw new Error('target volume exception')
   }
 
   let action = 'SKIP' // default
   let tradeVolume = 0
   let errorMsg = null
 
-  if (evaluate > targetVolume * 1.12) {
+  if (evaluate > targetVolume * 1) {
     action = 'SELL'
-    tradeVolume = (evaluate - targetVolume) / rate // BTC
-    const res = postOrder(rate, tradeVolume, 'sell')
+    tradeVolume = evaluate - targetVolume
+    const res = postOrder(rate, tradeVolume / rate, 'sell', pair)
 
     if (!res['success']) {
       errorMsg = res['error']
     }
   } else if (evaluate < targetVolume) {
     action = 'BUY'
-    tradeVolume = targetVolume - evaluate // JPY
-    const res = postOrder(rate, tradeVolume, 'market_buy')
+    tradeVolume = targetVolume - evaluate
+    const res = postOrder(rate, tradeVolume, 'market_buy', pair)
 
     if (!res['success']) {
       errorMsg = res['error']
@@ -222,10 +255,14 @@ function main() {
   }
 
   if (errorMsg) {
-    notification('WARN', `missed ${action} BTC`, errorMsg)
+    notification('WARN', `missed ${action} ${currency.toUpperCase()}`, errorMsg)
     action += ' (FAIL)'
   } else {
-    notification('INFO', `取引(${action})を実行しました`, `レート: ${rate}, 取引額: ${tradeVolume}`)
+    notification(
+      'INFO',
+      `取引(${action})を実行しました`,
+      `通貨: ${currency.toUpperCase()}\n レート: ${rate}\n 取引額: ${tradeVolume}`
+    )
   }
 
   sheetLogger(evaluate, rate, action, tradeVolume)
