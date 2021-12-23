@@ -8,29 +8,12 @@ const CHANNEL_NAME = prop.CHANNEL_NAME
 
 type Contents = Array<{
   type: string
-  text?: Text
-  accessory?: {
+  text?: {
     type: string
-    options: Array<{
-      text: Text
-      description: Text
-      value: string
-    }>
-    action_id?: string
+    text: string
+    emoji?: boolean
   }
-  elements?: Array<{
-    type: string
-    text: Text
-    value: string
-    action_id: string
-  }>
 }>
-
-type Text = {
-  type: string
-  text: string
-  emoji?: boolean
-}
 
 // Slackにメッセージを投稿
 function postMessage(contents: Contents, thread_ts = '') {
@@ -126,7 +109,7 @@ function postOrder(rate: number, ammount: number, orderType = 'buy', pair = 'btc
 // HMAC認証ダイジェストの発行
 function hmac(url: string, payload?: string): GoogleAppsScript.URL_Fetch.HttpHeaders {
   const date = new Date()
-  var nonce = Math.floor(date.getTime() / 1000).toString()
+  var nonce = Math.floor(date.getTime() / 100).toString()
   const message = payload ? nonce + url + payload : nonce + url
   const signature = Utilities.computeHmacSha256Signature(message, COINCHECK_SECRET_KEY)
   const sign = signature.reduce((prev: string, current: number) => {
@@ -177,18 +160,26 @@ function notification(type: string, header: string, msg: string) {
 }
 
 // 取引ログ
-function sheetLogger(rate: number, evaluate: number, action: string, volume: number) {
+function sheetLogger(rate: number, evaluate: number, action: string, volume: number, err: string) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('trade_log')
   const row: number = (sheet?.getLastRow() ?? 1) + 1
   const now: Date = new Date()
 
+  //日付
   sheet?.getRange(row, 1).setValue(Utilities.formatDate(now, 'JST', 'yyyy/MM/dd HH:mm:ss'))
-  sheet?.getRange(row, 2).setNumberFormat('@')
+  //レート
   sheet?.getRange(row, 2).setValue(rate)
-  sheet?.getRange(row, 3).setNumberFormat('@')
+  sheet?.getRange(row, 2).setNumberFormat('[$¥-411]#,##0.00')
+  //評価額
   sheet?.getRange(row, 3).setValue(evaluate)
+  sheet?.getRange(row, 3).setNumberFormat('[$¥-411]#,##0.00')
+  //取引種別
   sheet?.getRange(row, 4).setValue(action)
+  //取引額
   sheet?.getRange(row, 5).setValue(volume)
+  sheet?.getRange(row, 5).setNumberFormat('[$¥-411]#,##0.00')
+  //エラー詳細
+  sheet?.getRange(row, 6).setValue(err)
 }
 
 // 目標額の設定
@@ -265,5 +256,5 @@ function main() {
     )
   }
 
-  sheetLogger(evaluate, rate, action, tradeVolume)
+  sheetLogger(rate, evaluate, action, tradeVolume, errorMsg)
 }
