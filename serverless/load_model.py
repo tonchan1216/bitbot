@@ -7,16 +7,18 @@ import pickle
 from coincheck import market, account, order
 import os
 from dotenv import load_dotenv
+from slack_sdk import WebClient
 
 # from tensorflow.keras.models import Sequential
 # from tensorflow.keras.layers import Dense, ReLU
 # from tensorflow.keras.optimizers import RMSprop
 # from sklearn.preprocessing import StandardScaler
 
-class Brain:
+class Agent:
     def __init__(self):
-        optimizer = RMSprop()
+        self.epsilon = 0.01
 
+        optimizer = RMSprop()
         model = Sequential()
         model.add(Dense(3, input_shape=(3,)))
         model.add(ReLU()) 
@@ -31,11 +33,6 @@ class Brain:
 
     def load(self, name):
         self.model.load_weights(name)
-
-class Agent(Brain):
-    def __init__(self):
-        super().__init__()
-        self.epsilon = 0.01
 
     def act(self, state):
         if np.random.rand() <= self.epsilon:
@@ -72,24 +69,29 @@ class Wallet():
             amount = math.floor(((self.cash_in_hand/self.now_price) - self.commission) * 10000) / 10000 
             res = self.ord.buy_btc_jpy(rate=self.now_price, amount=0.001)
             print("BUY")
-            if (res['success'] == False):
-                print(res['error'])
+            return self._response_handle(res)
         # 売り
         elif (action == 2 and self.hold_a_position > 0):
             res = self.ord.sell_btc_jpy(rate=self.now_price, amount=self.hold_a_position)
             print("SELL")
-            if (res['success'] == False):
-                print(res['error'])
+            return self._response_handle(res)
         else:
             print("SKIP")
 
-def main():
+    def _response_handle(self, response):
+        if (response['success'] == False):
+            return response['error']
+
+        return response
+
+
+def lambda_handler(event, context):
     # .envファイルの内容を読み込みます
     load_dotenv()
 
     name = 'qlearning'
     # agent = Agent()
-    wallet = Wallet(os.environ['ACCESS_KEY'], os.environ['SECRET_KEY'])
+    wallet = Wallet(os.environ['COINCHECK_ACCESS_KEY'], os.environ['COINCHECK_SECRET_KEY'])
     # with open('{}.pkl'.format(name), 'rb') as f:
     #     scaler = pickle.load(f)
     # agent.load('{}/{}.h5'.format(mdl_dir, name))
@@ -97,10 +99,10 @@ def main():
     # state = scaler.transform([get_now_state()])
     # action = agent.act(state)
     action = 0
-    wallet.trade(action)
+    result = wallet.trade(action)
 
-main()
+    client = WebClient(token=os.environ["SLACK_API_TOKEN"])
+    channel_name=os.environ["CHANNEL_NAME"]
+    client.chat_postMessage(text=result, channel=channel_name)
 
-
-
-
+lambda_handler()

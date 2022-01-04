@@ -1,0 +1,23 @@
+org: cleartone1216
+app: bitbot-cron
+service: bitbot-cron
+
+frameworkVersion: '2'
+
+provider:
+  name: aws
+  runtime: python3.8
+  lambdaHashingVersion: 20201221
+
+functions:
+  cronHandler:
+    handler: handler.run
+    events:
+      - schedule: cron(0 10 * * ? *)
+
+custom:
+  pythonRequirements:
+    dockerizePip: true
+
+plugins:
+  - serverless-python-requirements
