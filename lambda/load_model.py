@@ -57,9 +57,9 @@ class Wallet():
     def get_now_state(self):
         balance = self.act.get_balance()
         state = np.empty(3)
-        if (self.hold_a_position == None): self.hold_a_position = balance['btc']
-        if (self.now_price == None): self.now_price = self.mkt.ticker()['bid']
-        if (self.cash_in_hand == None): self.cash_in_hand = balance['jpy']
+        if (self.hold_a_position == None): self.hold_a_position = float(balance['btc'])
+        if (self.now_price == None): self.now_price = float(self.mkt.ticker()['bid'])
+        if (self.cash_in_hand == None): self.cash_in_hand = float(balance['jpy'])
 
         state[0] = self.hold_a_position ## 保有するポジション
         state[1] = self.now_price ## 現在のレート
@@ -68,14 +68,20 @@ class Wallet():
 
     def trade(self, action):
         # 買い
-        if action == 0 and self.hold_a_position == 0:
+        if (action == 0 and self.hold_a_position == 0):
             amount = math.floor(((self.cash_in_hand/self.now_price) - self.commission) * 10000) / 10000 
-            # self.ord.buy_btc_jpy(rate=self.now_price, amount=amount)
+            res = self.ord.buy_btc_jpy(rate=self.now_price, amount=0.001)
             print("BUY")
+            if (res['success'] == False):
+                print(res['error'])
         # 売り
-        if action == 2 and self.hold_a_position != 0:
-            # self.ord.sell_btc_jpy(rate=self.now_price, amount=self.hold_a_position)
+        elif (action == 2 and self.hold_a_position > 0):
+            res = self.ord.sell_btc_jpy(rate=self.now_price, amount=self.hold_a_position)
             print("SELL")
+            if (res['success'] == False):
+                print(res['error'])
+        else:
+            print("SKIP")
 
 def main():
     # .envファイルの内容を読み込みます
@@ -90,9 +96,8 @@ def main():
     state = wallet.get_now_state()
     # state = scaler.transform([get_now_state()])
     # action = agent.act(state)
-    action = 1
+    action = 0
     wallet.trade(action)
-    print(action)
 
 main()
 
