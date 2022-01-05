@@ -20,7 +20,7 @@ functions:
   cronHandler:
     handler: handler.run
     events:
-      - schedule: cron(0 10 * * ? *)
+      - schedule: cron(0 * * * ? *)
 
 custom:
   pythonRequirements:
