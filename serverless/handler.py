@@ -80,7 +80,7 @@ class Wallet():
 
 
 def run(event, context):
-    logger.info("Your cron function " + context.function_name + " ran")
+    # logger.info("Your cron function " + context.function_name + " ran")
 
     agent = Agent()
     wallet = Wallet(os.environ['COINCHECK_ACCESS_KEY'], os.environ['COINCHECK_SECRET_KEY'])
@@ -94,7 +94,7 @@ def run(event, context):
     action = agent.act(state)
     result = wallet.trade(action)
 
-    if (result != ""):
+    if (result):
         client = WebClient(token=os.environ["SLACK_API_TOKEN"])
         channel_name=os.environ["CHANNEL_NAME"]
         client.chat_postMessage(text=result, channel=channel_name)
