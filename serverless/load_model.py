@@ -1,6 +1,4 @@
-import pandas as pd
 import numpy as np
-import random
 import math
 import pickle
 
@@ -8,31 +6,27 @@ from coincheck import market, account, order
 import os
 from dotenv import load_dotenv
 from slack_sdk import WebClient
-
-# from tensorflow.keras.models import Sequential
-# from tensorflow.keras.layers import Dense, ReLU
-# from tensorflow.keras.optimizers import RMSprop
-# from sklearn.preprocessing import StandardScaler
+import tflite_runtime.interpreter as tflite
+from sklearn.preprocessing import StandardScaler
 
 class Agent:
     def __init__(self):
         self.epsilon = 0.01
 
-        optimizer = RMSprop()
-        model = Sequential()
-        model.add(Dense(3, input_shape=(3,)))
-        model.add(ReLU()) 
-        model.add(Dense(3))
-        model.add(ReLU())
-        model.add(Dense(3))
-        model.compile(loss="mse", optimizer=optimizer)
-        self.model = model
+    def load(self, name):
+        self.interpreter = tflite.Interpreter(model_path=name)
+        self.interpreter.allocate_tensors()
 
     def predict(self, state):
-        return self.model.predict(state)
-
-    def load(self, name):
-        self.model.load_weights(name)
+        input_details = self.interpreter.get_input_details()
+        output_details = self.interpreter.get_output_details()
+ 
+        if (input_details[0]['dtype'] == np.float32):
+            state = state.astype(np.float32)
+ 
+        self.interpreter.set_tensor(input_details[0]['index'], state)
+        self.interpreter.invoke()
+        return self.interpreter.get_tensor(output_details[0]['index'])
 
     def act(self, state):
         if np.random.rand() <= self.epsilon:
@@ -53,7 +47,7 @@ class Wallet():
 
     def get_now_state(self):
         balance = self.act.get_balance()
-        state = np.empty(3)
+        state = np.empty(3, dtype='float32')
         if (self.hold_a_position == None): self.hold_a_position = float(balance['btc'])
         if (self.now_price == None): self.now_price = float(self.mkt.ticker()['bid'])
         if (self.cash_in_hand == None): self.cash_in_hand = float(balance['jpy'])
@@ -77,6 +71,7 @@ class Wallet():
             return self._response_handle(res)
         else:
             print("SKIP")
+            return "SKIP"
 
     def _response_handle(self, response):
         if (response['success'] == False):
@@ -85,20 +80,21 @@ class Wallet():
         return response
 
 
-def lambda_handler(event, context):
+def lambda_handler():
     # .envファイルの内容を読み込みます
     load_dotenv()
 
     name = 'qlearning'
-    # agent = Agent()
+    agent = Agent()
     wallet = Wallet(os.environ['COINCHECK_ACCESS_KEY'], os.environ['COINCHECK_SECRET_KEY'])
-    # with open('{}.pkl'.format(name), 'rb') as f:
-    #     scaler = pickle.load(f)
-    # agent.load('{}/{}.h5'.format(mdl_dir, name))
+
+    with open('{}.pkl'.format(name), 'rb') as f:
+        scaler = pickle.load(f)
+    agent.load('{}.tflite'.format(name))
+
     state = wallet.get_now_state()
-    # state = scaler.transform([get_now_state()])
-    # action = agent.act(state)
-    action = 0
+    state = scaler.transform([state])
+    action = agent.act(state)
     result = wallet.trade(action)
 
     client = WebClient(token=os.environ["SLACK_API_TOKEN"])
