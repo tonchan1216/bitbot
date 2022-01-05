@@ -1,6 +1,5 @@
 slack-sdk==3.13.0
 numpy>=1.19.5
-scikit-learn==1.0.2
 pytz>=2021.3
 requests>=2.27.0
 simplejson>=3.17.6

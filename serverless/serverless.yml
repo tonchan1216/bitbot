@@ -3,11 +3,18 @@ app: bitbot-cron
 service: bitbot-cron
 
 frameworkVersion: '2'
+variablesResolutionMode: 20210326
+useDotenv: true
 
 provider:
   name: aws
   runtime: python3.8
   lambdaHashingVersion: 20201221
+  environment:
+    COINCHECK_ACCESS_KEY: ${env:COINCHECK_ACCESS_KEY}
+    COINCHECK_SECRET_KEY: ${env:COINCHECK_SECRET_KEY}
+    SLACK_API_TOKEN: ${env:SLACK_API_TOKEN}
+    CHANNEL_NAME: ${env:CHANNEL_NAME}
 
 functions:
   cronHandler:
@@ -21,3 +28,5 @@ custom:
 
 plugins:
   - serverless-python-requirements
+  - serverless-dotenv-plugin
+

@@ -5,6 +5,7 @@
   "author": "",
   "license": "MIT",
   "devDependencies": {
-    "serverless-python-requirements": "^4.3.0"
+    "serverless-python-requirements": "^4.3.0",
+    "serverless-dotenv-plugin": "^3.12.2"
   }
 }
