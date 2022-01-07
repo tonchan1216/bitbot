@@ -33,6 +33,7 @@ class Agent:
         if np.random.rand() <= self.epsilon:
             return np.random.choice(3)
         act_values = self.predict(state)
+        print(act_values)
         return np.argmax(act_values[0])
 
 class Wallet():
@@ -80,8 +81,6 @@ class Wallet():
 
 
 def run(event, context):
-    # logger.info("Your cron function " + context.function_name + " ran")
-
     agent = Agent()
     wallet = Wallet(os.environ['COINCHECK_ACCESS_KEY'], os.environ['COINCHECK_SECRET_KEY'])
 
