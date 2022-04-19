@@ -69,7 +69,7 @@ class Wallet():
             return self._response_handle(res)
         # 売り
         elif (action == 2 and self.hold_a_position > 0):
-            res = self.ord.sell_btc_jpy(rate=self.now_price_bid, amount=self.hold_a_position)
+            res = self.ord.sell_btc_jpy(rate=self.now_price_bid, amount=0.001)
             return self._response_handle(res)
         else:
             logger.info("[SKIP] now price: " + str(self.now_price_bid))
@@ -77,7 +77,7 @@ class Wallet():
     def _response_handle(self, response):
         if (response['success'] == False):
             return response['error']
-        return response
+        return "{} {}BTC (rate: {})".format(response['order_type'], response['amount'], response['rate'])
 
 
 def run(event, context):
